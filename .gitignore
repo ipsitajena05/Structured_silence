@@ -11,12 +11,6 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
-# Raw medical dataset
-data/raw/
-
-# Processed dataset files
-data/processed/*.csv
-
 # OS/editor files
 .DS_Store
 Thumbs.db
