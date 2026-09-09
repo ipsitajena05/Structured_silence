@@ -65,6 +65,9 @@ score_column = None
 if "refined_information_score" in df.columns:
     score_column = "refined_information_score"
 
+elif "information_richness_score" in df.columns:
+    score_column = "information_richness_score"
+
 elif "information_score" in df.columns:
     score_column = "information_score"
 
@@ -98,9 +101,23 @@ if score_column:
 # 3. CONTEXTUALLY RICH VS SPARSE
 # ============================================================
 
-if "sample_group" in df.columns:
+# The final dataset may not contain sample_group.
+# Therefore, create the groups using refined_information_score.
 
-    group_counts = df["sample_group"].value_counts()
+if "refined_information_score" in df.columns:
+
+    rich_count = (
+        df["refined_information_score"] > 0
+    ).sum()
+
+    sparse_count = (
+        df["refined_information_score"] == 0
+    ).sum()
+
+    group_counts = pd.Series({
+        "Contextually rich": rich_count,
+        "Contextually sparse": sparse_count
+    })
 
     plt.figure(figsize=(8, 6))
 
@@ -127,29 +144,98 @@ if "sample_group" in df.columns:
 # 4. EMOTION PRESENCE
 # ============================================================
 
-emotion_column = None
-
-for column in [
-    "emotion",
-    "emotions",
-    "emotion_detected",
-    "emotionally_loaded"
-]:
-    if column in df.columns:
-        emotion_column = column
-        break
+emotion_present = None
 
 
-if emotion_column:
+# ------------------------------------------------------------
+# Preferred: refined_emotional
+# ------------------------------------------------------------
 
-    # Convert values into simple Yes / No groups
-    values = df[emotion_column].fillna("")
+if "refined_emotional" in df.columns:
 
-    emotion_present = values.astype(str).str.strip() != ""
+    values = df["refined_emotional"]
+
+    # Handle boolean values
+    if values.dtype == bool:
+
+        emotion_present = values
+
+    else:
+
+        values = values.fillna("").astype(str).str.strip().str.lower()
+
+        emotion_present = values.isin([
+            "true",
+            "1",
+            "yes",
+            "y",
+            "detected"
+        ])
+
+
+# ------------------------------------------------------------
+# If refined_emotional is unavailable, use emotion_types
+# ------------------------------------------------------------
+
+elif "emotion_types" in df.columns:
+
+    values = (
+        df["emotion_types"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    emotion_present = ~values.isin([
+        "",
+        "[]",
+        "none",
+        "nan",
+        "null"
+    ])
+
+
+# ------------------------------------------------------------
+# Final fallback
+# ------------------------------------------------------------
+
+elif "emotionally_loaded" in df.columns:
+
+    values = df["emotionally_loaded"]
+
+    if values.dtype == bool:
+
+        emotion_present = values
+
+    else:
+
+        values = (
+            values
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
+
+        emotion_present = values.isin([
+            "true",
+            "1",
+            "yes",
+            "y",
+            "detected"
+        ])
+
+
+# ------------------------------------------------------------
+# Create graph
+# ------------------------------------------------------------
+
+if emotion_present is not None:
 
     emotion_counts = pd.Series({
-        "Emotion detected": emotion_present.sum(),
-        "No emotion detected": (~emotion_present).sum()
+        "Emotion detected": int(emotion_present.sum()),
+        "No emotion detected": int((~emotion_present).sum())
     })
 
     plt.figure(figsize=(8, 6))
@@ -162,6 +248,16 @@ if emotion_column:
 
     plt.xticks(rotation=0)
 
+    # Add values above bars
+    for i, value in enumerate(emotion_counts):
+
+        plt.text(
+            i,
+            value + 5,
+            str(value),
+            ha="center"
+        )
+
     plt.tight_layout()
 
     plt.savefig(
@@ -173,6 +269,11 @@ if emotion_column:
 
     print("Saved: emotion_presence.png")
 
+    print()
+    print("EMOTION SUMMARY")
+    print(f"Emotion detected: {emotion_counts['Emotion detected']}")
+    print(f"No emotion detected: {emotion_counts['No emotion detected']}")
+
 
 # ============================================================
 # 5. CONTEXT TYPE FREQUENCY
@@ -181,10 +282,11 @@ if emotion_column:
 context_column = None
 
 for column in [
+    "context_types",
     "context",
-    "contexts",
-    "context_types"
+    "contexts"
 ]:
+
     if column in df.columns:
         context_column = column
         break
@@ -198,14 +300,27 @@ if context_column:
 
         # Contexts may be stored like:
         # occupation, medication, timeline
+        # or ['occupation', 'medication']
+
+        value = str(value).strip()
+
+        # Remove list brackets
+        value = (
+            value
+            .replace("[", "")
+            .replace("]", "")
+            .replace("'", "")
+            .replace('"', "")
+        )
 
         items = [
             item.strip()
-            for item in str(value).split(",")
+            for item in value.split(",")
             if item.strip()
         ]
 
         for item in items:
+
             context_counts[item] = (
                 context_counts.get(item, 0) + 1
             )
@@ -248,5 +363,5 @@ print("=" * 60)
 print("VISUALIZATION COMPLETE")
 print("=" * 60)
 
-print(f"Charts saved to:")
+print("Charts saved to:")
 print(OUTPUT_DIR)
